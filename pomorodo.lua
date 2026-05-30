@@ -251,9 +251,16 @@ local function end_of_segment()
     if mode == "focus" then
         session_count = session_count + 1
         total_sessions_completed = total_sessions_completed + 1
-        if sessions_before_long > 0 and (session_count % sessions_before_long == 0) then set_mode("long_break") else set_mode("short_break") end
+        if sessions_before_long > 0 and (session_count % sessions_before_long == 0) then
+            play_source(sound_long_file)
+            set_mode("long_break")
+        else
+            play_source(sound_short_file)
+            set_mode("short_break")
+        end
     elseif mode == "long_break" then
         if stop_after_long_break then
+            play_source(sound_focus_file)
             if stop_stream_after_long_break then
                 obs.obs_frontend_streaming_stop()
             end
@@ -263,19 +270,20 @@ local function end_of_segment()
             time_left = 0
             push_display()
         else
+            play_source(sound_focus_file)
             set_mode("focus")
         end
     else
+        -- short_break ended -> back to focus
+        play_source(sound_focus_file)
         set_mode("focus")
     end
 end
 
 local function tick()
     if not timer_running or mode == "paused" or mode == "stopped" then return end
-    if time_left == 1 then
-        local nm = next_mode_after_current()
-        play_cue_for_next(nm)
-    elseif time_left == 60 and (mode == "short_break" or mode == "long_break") then
+    -- 1-minute warning for breaks
+    if time_left == 60 and (mode == "short_break" or mode == "long_break") then
         play_source(sound_warning_file)
     end
     time_left = time_left - 1
