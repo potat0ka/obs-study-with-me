@@ -310,28 +310,15 @@ function reset_goal_pressed(pressed)
 end
 
 -- ==== OBS UI ====
-local function create_text_source(name, text, x, y)
+local function create_text_source(name, text)
     local src = obs.obs_get_source_by_name(name)
     if not src then
         local s = obs.obs_data_create()
         obs.obs_data_set_string(s, "text", text)
         src = obs.obs_source_create("text_gdiplus", name, s, nil)
         obs.obs_data_release(s)
-        
-        local cur_scene = obs.obs_frontend_get_current_scene()
-        if cur_scene then
-            local scene = obs.obs_scene_from_source(cur_scene)
-            if scene then
-                local item = obs.obs_scene_add(scene, src)
-                local pos = obs.vec2()
-                pos.x = x
-                pos.y = y
-                obs.obs_sceneitem_set_pos(item, pos)
-            end
-            obs.obs_source_release(cur_scene)
-        end
     end
-    if src then obs.obs_source_release(src) end
+    return src
 end
 
 local function create_media_source_stub(name)
@@ -369,11 +356,53 @@ local function create_media_source_stub(name)
 end
 
 function auto_setup_pressed(props, prop)
-    create_text_source("Pomodoro Timer", "25:00", 50, 50)
-    create_text_source("Pomodoro Status", "Focus Time!", 50, 150)
-    create_text_source("Pomodoro Clock", "12:00 PM", 50, 250)
-    create_text_source("Pomodoro Goal", "Goal: 0 / 8", 50, 350)
-    create_text_source("Pomodoro Subject", "Studying...", 50, 450)
+    local scene_names = {"Study With Me - Focus", "Study With Me - Break"}
+    local scenes = {}
+    local created_scenes = {}
+    
+    for _, name in ipairs(scene_names) do
+        local source = obs.obs_get_source_by_name(name)
+        if source then
+            local scene = obs.obs_scene_from_source(source)
+            table.insert(scenes, {scene=scene, source=source})
+        else
+            local scene = obs.obs_scene_create(name)
+            table.insert(scenes, {scene=scene, source=nil})
+            table.insert(created_scenes, scene)
+        end
+    end
+    
+    local texts = {
+        {name="Pomodoro Timer", default="25:00", y=50},
+        {name="Pomodoro Status", default="Focus Time!", y=150},
+        {name="Pomodoro Clock", default="12:00 PM", y=250},
+        {name="Pomodoro Goal", default="Goal: 0 / 8", y=350},
+        {name="Pomodoro Subject", default="Studying...", y=450}
+    }
+    
+    for _, t in ipairs(texts) do
+        local src = create_text_source(t.name, t.default)
+        if src then
+            for _, sc in ipairs(scenes) do
+                local found = obs.obs_scene_find_source(sc.scene, t.name)
+                if not found then
+                    local item = obs.obs_scene_add(sc.scene, src)
+                    local pos = obs.vec2()
+                    pos.x = 50
+                    pos.y = t.y
+                    obs.obs_sceneitem_set_pos(item, pos)
+                end
+            end
+            obs.obs_source_release(src)
+        end
+    end
+    
+    for _, sc in ipairs(scenes) do
+        if sc.source then obs.obs_source_release(sc.source) end
+    end
+    for _, scene in ipairs(created_scenes) do
+        obs.obs_scene_release(scene)
+    end
     
     create_media_source_stub("Pomodoro Alert")
     return true
@@ -385,13 +414,14 @@ function script_defaults(settings)
     obs.obs_data_set_default_string(settings, "clock_format", "%I:%M %p")
     obs.obs_data_set_default_string(settings, "current_subject", "Studying...")
     
+    obs.obs_data_set_default_string(settings, "focus_scene_name", "Study With Me - Focus")
+    obs.obs_data_set_default_string(settings, "break_scene_name", "Study With Me - Break")
+    
     obs.obs_data_set_default_string(settings, "timer_source_name", "Pomodoro Timer")
     obs.obs_data_set_default_string(settings, "status_source_name", "Pomodoro Status")
     obs.obs_data_set_default_string(settings, "clock_source_name", "Pomodoro Clock")
     obs.obs_data_set_default_string(settings, "goal_source_name", "Pomodoro Goal")
     obs.obs_data_set_default_string(settings, "subject_source_name", "Pomodoro Subject")
-    
-    
 end
 
 function script_properties()
