@@ -46,12 +46,17 @@ end_time_inline = true
 sep_char = "•"
 use_24h = true
 
--- Sounds
+-- Sounds (transition ding alerts)
 enable_sounds = true
 sound_focus_file = ""
 sound_short_file = ""
 sound_long_file = ""
 sound_warning_file = ""
+
+-- Background music per scene (looping)
+bgm_focus_file = ""
+bgm_short_file = ""
+bgm_long_file = ""
 
 -- Colors (for timer text source)
 color_focus = 0x00FF00
@@ -167,20 +172,44 @@ local function session_suffix()
 end
 
 -- ==== Sounds ====
+local function update_bgm_source(name, path)
+    local src = obs.obs_get_source_by_name(name)
+    if src then
+        local s = obs.obs_data_create()
+        obs.obs_data_set_string(s, "local_file", path or "")
+        obs.obs_data_set_bool(s, "is_local_file", true)
+        obs.obs_data_set_bool(s, "looping", true)
+        obs.obs_data_set_bool(s, "restart_on_activate", true)
+        obs.obs_source_update(src, s)
+        obs.obs_data_release(s)
+        obs.obs_source_release(src)
+    end
+end
+
 local function play_source(path)
     if not enable_sounds or not path or path == "" then return end
     if not file_exists(path) then return end
     
     local src = obs.obs_get_source_by_name("Pomodoro Alert")
-    if src then
-        local s = obs.obs_data_create()
-        obs.obs_data_set_string(s, "local_file", path)
-        obs.obs_source_update(src, s)
-        obs.obs_data_release(s)
-        
-        obs.obs_source_media_restart(src)
-        obs.obs_source_release(src)
-    end
+    if not src then return end
+    
+    -- Set file then force restart
+    local s = obs.obs_data_create()
+    obs.obs_data_set_string(s, "local_file", "")
+    obs.obs_source_update(src, s)
+    obs.obs_data_release(s)
+    
+    local s2 = obs.obs_data_create()
+    obs.obs_data_set_string(s2, "local_file", path)
+    obs.obs_data_set_bool(s2, "is_local_file", true)
+    obs.obs_data_set_bool(s2, "looping", false)
+    obs.obs_data_set_bool(s2, "restart_on_activate", false)
+    obs.obs_data_set_bool(s2, "close_when_inactive", false)
+    obs.obs_source_update(src, s2)
+    obs.obs_data_release(s2)
+    
+    obs.obs_source_media_restart(src)
+    obs.obs_source_release(src)
 end
 
 local function play_cue_for_next(next_mode)
@@ -320,6 +349,37 @@ function reset_goal_pressed(pressed)
 end
 
 -- ==== OBS UI ====
+local function make_audio_source(name, looping, restart_on_activate)
+    local src = obs.obs_get_source_by_name(name)
+    if not src then
+        local s = obs.obs_data_create()
+        obs.obs_data_set_bool(s, "is_local_file", true)
+        obs.obs_data_set_bool(s, "looping", looping)
+        obs.obs_data_set_bool(s, "close_when_inactive", false)
+        obs.obs_data_set_bool(s, "restart_on_activate", restart_on_activate)
+        src = obs.obs_source_create("ffmpeg_source", name, s, nil)
+        obs.obs_data_release(s)
+    end
+    -- Auto-enable monitoring so user can hear it immediately
+    if src then
+        obs.obs_source_set_monitoring_type(src, obs.OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT)
+    end
+    return src
+end
+
+local function add_source_to_scene_offscreen(scene, src)
+    if not scene or not src then return end
+    local name = obs.obs_source_get_name(src)
+    local found = obs.obs_scene_find_source(scene, name)
+    if not found then
+        local item = obs.obs_scene_add(scene, src)
+        local pos = obs.vec2()
+        pos.x = -1000
+        pos.y = -1000
+        obs.obs_sceneitem_set_pos(item, pos)
+    end
+end
+
 local function create_text_source(name, text)
     local src = obs.obs_get_source_by_name(name)
     if not src then
@@ -331,105 +391,88 @@ local function create_text_source(name, text)
     return src
 end
 
-local function create_media_source_stub(name)
-    local src = obs.obs_get_source_by_name(name)
-    if not src then
-        local s = obs.obs_data_create()
-        obs.obs_data_set_bool(s, "is_local_file", true)
-        obs.obs_data_set_bool(s, "looping", false)
-        obs.obs_data_set_bool(s, "close_when_inactive", false)
-        obs.obs_data_set_bool(s, "restart_on_activate", false)
-        src = obs.obs_source_create("ffmpeg_source", name, s, nil)
-        obs.obs_data_release(s)
-    end
-    
-    if src then
-        local scenes = obs.obs_frontend_get_scenes()
-        if scenes then
-            for _, cur_scene in ipairs(scenes) do
-                local scene = obs.obs_scene_from_source(cur_scene)
-                if scene then
-                    local found = obs.obs_scene_find_source(scene, name)
-                    if not found then
-                        local item = obs.obs_scene_add(scene, src)
-                        local pos = obs.vec2()
-                        pos.x = -1000
-                        pos.y = -1000
-                        obs.obs_sceneitem_set_pos(item, pos)
-                    end
-                end
-            end
-            obs.source_list_release(scenes)
-        end
-        obs.obs_source_release(src)
-    end
-end
-
 function auto_setup_pressed(props, prop)
-    local scene_names = {"Study With Me - Focus", "Study With Me - Short Break", "Study With Me - Long Break"}
-    local scenes = {}
-    local created_scenes = {}
-    
-    for _, name in ipairs(scene_names) do
-        local source = obs.obs_get_source_by_name(name)
-        if source then
-            local scene = obs.obs_scene_from_source(source)
-            table.insert(scenes, {scene=scene, source=source})
-        else
-            local scene = obs.obs_scene_create(name)
-            table.insert(scenes, {scene=scene, source=nil})
-            table.insert(created_scenes, scene)
-        end
-    end
-    
-    local texts = {
-        {name="Pomodoro Timer", default="25:00", y=50},
-        {name="Pomodoro Status", default="Focus Time!", y=150},
-        {name="Pomodoro Clock", default="12:00 PM", y=250},
-        {name="Pomodoro Goal", default="Goal: 0 / 8", y=350},
-        {name="Pomodoro Subject", default="Studying...", y=450}
+    local scene_defs = {
+        {name="Study With Me - Focus",       bgm="Pomodoro BGM - Focus"},
+        {name="Study With Me - Short Break",  bgm="Pomodoro BGM - Short Break"},
+        {name="Study With Me - Long Break",   bgm="Pomodoro BGM - Long Break"}
     }
-    
+    local scene_objects = {}
+
+    -- Create or fetch scenes
+    for _, def in ipairs(scene_defs) do
+        local source = obs.obs_get_source_by_name(def.name)
+        if source then
+            def.scene = obs.obs_scene_from_source(source)
+            def.owned_source = source
+        else
+            def.scene = obs.obs_scene_create(def.name)
+            def.owned_new = true
+        end
+        table.insert(scene_objects, def)
+    end
+
+    -- Text sources added to ALL scenes
+    local texts = {
+        {name="Pomodoro Timer",   default="25:00",        y=50},
+        {name="Pomodoro Status",  default="Focus Time!",  y=150},
+        {name="Pomodoro Clock",   default="12:00 PM",     y=250},
+        {name="Pomodoro Goal",    default="Goal: 0 / 8",  y=350},
+        {name="Pomodoro Subject", default="Studying...",  y=450}
+    }
     for _, t in ipairs(texts) do
         local src = create_text_source(t.name, t.default)
         if src then
-            for _, sc in ipairs(scenes) do
-                local found = obs.obs_scene_find_source(sc.scene, t.name)
+            for _, def in ipairs(scene_objects) do
+                local found = obs.obs_scene_find_source(def.scene, t.name)
                 if not found then
-                    local item = obs.obs_scene_add(sc.scene, src)
+                    local item = obs.obs_scene_add(def.scene, src)
                     local pos = obs.vec2()
-                    pos.x = 50
-                    pos.y = t.y
+                    pos.x = 50; pos.y = t.y
                     obs.obs_sceneitem_set_pos(item, pos)
                 end
             end
             obs.obs_source_release(src)
         end
     end
-    
-    for _, sc in ipairs(scenes) do
-        if sc.source then obs.obs_source_release(sc.source) end
+
+    -- Per-scene looping BGM sources (each unique to its scene)
+    for _, def in ipairs(scene_objects) do
+        local bgm = make_audio_source(def.bgm, true, true)
+        if bgm then
+            add_source_to_scene_offscreen(def.scene, bgm)
+            obs.obs_source_release(bgm)
+        end
     end
-    for _, scene in ipairs(created_scenes) do
-        obs.obs_scene_release(scene)
+
+    -- Shared alert source (non-looping) added to ALL scenes
+    local alert = make_audio_source("Pomodoro Alert", false, false)
+    if alert then
+        for _, def in ipairs(scene_objects) do
+            add_source_to_scene_offscreen(def.scene, alert)
+        end
+        obs.obs_source_release(alert)
     end
-    
-    create_media_source_stub("Pomodoro Alert")
-    
+
+    -- Cleanup references
+    for _, def in ipairs(scene_objects) do
+        if def.owned_source then obs.obs_source_release(def.owned_source) end
+        if def.owned_new    then obs.obs_scene_release(def.scene) end
+    end
+
+    -- Auto-link all names in settings
     if global_settings then
-        obs.obs_data_set_string(global_settings, "focus_scene_name", "Study With Me - Focus")
+        obs.obs_data_set_string(global_settings, "focus_scene_name",       "Study With Me - Focus")
         obs.obs_data_set_string(global_settings, "short_break_scene_name", "Study With Me - Short Break")
-        obs.obs_data_set_string(global_settings, "long_break_scene_name", "Study With Me - Long Break")
-        
-        obs.obs_data_set_string(global_settings, "timer_source_name", "Pomodoro Timer")
-        obs.obs_data_set_string(global_settings, "status_source_name", "Pomodoro Status")
-        obs.obs_data_set_string(global_settings, "clock_source_name", "Pomodoro Clock")
-        obs.obs_data_set_string(global_settings, "goal_source_name", "Pomodoro Goal")
+        obs.obs_data_set_string(global_settings, "long_break_scene_name",  "Study With Me - Long Break")
+        obs.obs_data_set_string(global_settings, "timer_source_name",   "Pomodoro Timer")
+        obs.obs_data_set_string(global_settings, "status_source_name",  "Pomodoro Status")
+        obs.obs_data_set_string(global_settings, "clock_source_name",   "Pomodoro Clock")
+        obs.obs_data_set_string(global_settings, "goal_source_name",    "Pomodoro Goal")
         obs.obs_data_set_string(global_settings, "subject_source_name", "Pomodoro Subject")
-        
         script_update(global_settings)
     end
-    
+
     return true
 end
 
@@ -532,11 +575,15 @@ function script_properties()
     obs.obs_properties_add_text(p, "sep_char", "Separator", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_bool(p, "use_24h", "Use 24h clock")
 
-    obs.obs_properties_add_bool(p, "enable_sounds", "Enable Sounds")
-    obs.obs_properties_add_path(p, "sound_focus_file", "Sound: Focus", obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
-    obs.obs_properties_add_path(p, "sound_short_file", "Sound: Short Break", obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
-    obs.obs_properties_add_path(p, "sound_long_file",  "Sound: Long Break",  obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
-    obs.obs_properties_add_path(p, "sound_warning_file", "Sound: 1-Min Warning", obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+    obs.obs_properties_add_bool(p, "enable_sounds", "Enable Transition Sounds (ding on segment change)")
+    obs.obs_properties_add_path(p, "sound_focus_file",   "Ding: Start Focus",    obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+    obs.obs_properties_add_path(p, "sound_short_file",   "Ding: Short Break",    obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+    obs.obs_properties_add_path(p, "sound_long_file",    "Ding: Long Break",     obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+    obs.obs_properties_add_path(p, "sound_warning_file", "Ding: 1-Min Warning",  obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+
+    obs.obs_properties_add_path(p, "bgm_focus_file", "BGM: Focus (looping)",       obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+    obs.obs_properties_add_path(p, "bgm_short_file", "BGM: Short Break (looping)", obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+    obs.obs_properties_add_path(p, "bgm_long_file",  "BGM: Long Break (looping)",  obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
 
     obs.obs_properties_add_color(p, "color_focus", "Color: Focus")
     obs.obs_properties_add_color(p, "color_short_break", "Color: Short Break")
@@ -596,6 +643,13 @@ function script_update(s)
     sound_short_file = obs.obs_data_get_string(s, "sound_short_file")
     sound_long_file  = obs.obs_data_get_string(s, "sound_long_file")
     sound_warning_file = obs.obs_data_get_string(s, "sound_warning_file")
+
+    bgm_focus_file = obs.obs_data_get_string(s, "bgm_focus_file")
+    bgm_short_file = obs.obs_data_get_string(s, "bgm_short_file")
+    bgm_long_file  = obs.obs_data_get_string(s, "bgm_long_file")
+    update_bgm_source("Pomodoro BGM - Focus",       bgm_focus_file)
+    update_bgm_source("Pomodoro BGM - Short Break", bgm_short_file)
+    update_bgm_source("Pomodoro BGM - Long Break",  bgm_long_file)
 
     color_focus = obs.obs_data_get_int(s, "color_focus")
     color_short_break = obs.obs_data_get_int(s, "color_short_break")
