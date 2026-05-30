@@ -46,10 +46,10 @@ use_24h = true
 
 -- Sounds
 enable_sounds = true
-sound_focus_source = ""
-sound_short_source = ""
-sound_long_source = ""
-sound_warning_source = ""
+sound_focus_file = ""
+sound_short_file = ""
+sound_long_file = ""
+sound_warning_file = ""
 
 -- Colors (for timer text source)
 color_focus = 0x00FF00
@@ -165,19 +165,38 @@ local function session_suffix()
 end
 
 -- ==== Sounds ====
-local function play_source(source_name)
-    if not enable_sounds or not source_name or source_name == "" then return end
-    local src = obs.obs_get_source_by_name(source_name)
+local function play_source(path)
+    if not enable_sounds or not path or path == "" then return end
+    if not file_exists(path) then return end
+    
+    local src = obs.obs_get_source_by_name("Pomodoro Alert")
     if src then
+        local s = obs.obs_data_create()
+        obs.obs_data_set_string(s, "local_file", path)
+        obs.obs_source_update(src, s)
+        obs.obs_data_release(s)
+        
         obs.obs_source_media_restart(src)
+        
+        -- Clear it after 10s so it doesn't replay on scene switch
+        local clear_audio
+        clear_audio = function()
+            obs.timer_remove(clear_audio)
+            local s2 = obs.obs_data_create()
+            obs.obs_data_set_string(s2, "local_file", "")
+            obs.obs_source_update(src, s2)
+            obs.obs_data_release(s2)
+        end
+        obs.timer_add(clear_audio, 10000)
+        
         obs.obs_source_release(src)
     end
 end
 
 local function play_cue_for_next(next_mode)
-    if next_mode == "focus" then play_source(sound_focus_source)
-    elseif next_mode == "short_break" then play_source(sound_short_source)
-    elseif next_mode == "long_break" then play_source(sound_long_source)
+    if next_mode == "focus" then play_source(sound_focus_file)
+    elseif next_mode == "short_break" then play_source(sound_short_file)
+    elseif next_mode == "long_break" then play_source(sound_long_file)
     end
 end
 
@@ -267,7 +286,7 @@ local function tick()
         local nm = next_mode_after_current()
         play_cue_for_next(nm)
     elseif time_left == 60 and (mode == "short_break" or mode == "long_break") then
-        play_source(sound_warning_source)
+        play_source(sound_warning_file)
     end
     time_left = time_left - 1
     if time_left <= 0 then end_of_segment() else push_display() end
@@ -334,7 +353,7 @@ local function create_media_source_stub(name)
         obs.obs_data_set_bool(s, "is_local_file", true)
         obs.obs_data_set_bool(s, "looping", false)
         obs.obs_data_set_bool(s, "close_when_inactive", false)
-        obs.obs_data_set_bool(s, "restart_on_activate", false)
+        obs.obs_data_set_bool(s, "restart_on_activate", true)
         src = obs.obs_source_create("ffmpeg_source", name, s, nil)
         obs.obs_data_release(s)
         
@@ -361,10 +380,7 @@ function auto_setup_pressed(props, prop)
     create_text_source("Pomodoro Goal", "Goal: 0 / 8", 50, 350)
     create_text_source("Pomodoro Subject", "Studying...", 50, 450)
     
-    create_media_source_stub("Sound: Focus")
-    create_media_source_stub("Sound: Short Break")
-    create_media_source_stub("Sound: Long Break")
-    create_media_source_stub("Sound: Warning")
+    create_media_source_stub("Pomodoro Alert")
     return true
 end
 
@@ -380,10 +396,7 @@ function script_defaults(settings)
     obs.obs_data_set_default_string(settings, "goal_source_name", "Pomodoro Goal")
     obs.obs_data_set_default_string(settings, "subject_source_name", "Pomodoro Subject")
     
-    obs.obs_data_set_default_string(settings, "sound_focus_source", "Sound: Focus")
-    obs.obs_data_set_default_string(settings, "sound_short_source", "Sound: Short Break")
-    obs.obs_data_set_default_string(settings, "sound_long_source", "Sound: Long Break")
-    obs.obs_data_set_default_string(settings, "sound_warning_source", "Sound: Warning")
+    
 end
 
 function script_properties()
@@ -419,21 +432,7 @@ function script_properties()
         end
     end
 
-    local function populate_media_sources(list_property)
-        obs.obs_property_list_clear(list_property)
-        obs.obs_property_list_add_string(list_property, "", "")
-        local sources = obs.obs_enum_sources()
-        if sources ~= nil then
-            for _, source in ipairs(sources) do
-                local source_id = obs.obs_source_get_unversioned_id(source)
-                if source_id == "ffmpeg_source" or source_id == "vlc_source" then
-                    local name = obs.obs_source_get_name(source)
-                    obs.obs_property_list_add_string(list_property, name, name)
-                end
-            end
-        end
-        obs.source_list_release(sources)
-    end
+    
 
     local p_timer = obs.obs_properties_add_list(p, "timer_source_name", "Timer Source", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
     populate_text_sources(p_timer)
@@ -480,18 +479,10 @@ function script_properties()
     obs.obs_properties_add_bool(p, "use_24h", "Use 24h clock")
 
     obs.obs_properties_add_bool(p, "enable_sounds", "Enable Sounds")
-    
-    local p_s1 = obs.obs_properties_add_list(p, "sound_focus_source", "Sound Source: Focus", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
-    populate_media_sources(p_s1)
-    
-    local p_s2 = obs.obs_properties_add_list(p, "sound_short_source", "Sound Source: Short Break", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
-    populate_media_sources(p_s2)
-    
-    local p_s3 = obs.obs_properties_add_list(p, "sound_long_source", "Sound Source: Long Break", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
-    populate_media_sources(p_s3)
-    
-    local p_s4 = obs.obs_properties_add_list(p, "sound_warning_source", "Sound Source: 1-Min Warning", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
-    populate_media_sources(p_s4)
+    obs.obs_properties_add_path(p, "sound_focus_file", "Sound: Focus", obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+    obs.obs_properties_add_path(p, "sound_short_file", "Sound: Short Break", obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+    obs.obs_properties_add_path(p, "sound_long_file",  "Sound: Long Break",  obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
+    obs.obs_properties_add_path(p, "sound_warning_file", "Sound: 1-Min Warning", obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
 
     obs.obs_properties_add_color(p, "color_focus", "Color: Focus")
     obs.obs_properties_add_color(p, "color_short_break", "Color: Short Break")
@@ -545,10 +536,10 @@ function script_update(s)
     use_24h = obs.obs_data_get_bool(s, "use_24h")
 
     enable_sounds = obs.obs_data_get_bool(s, "enable_sounds")
-    sound_focus_source = obs.obs_data_get_string(s, "sound_focus_source")
-    sound_short_source = obs.obs_data_get_string(s, "sound_short_source")
-    sound_long_source  = obs.obs_data_get_string(s, "sound_long_source")
-    sound_warning_source = obs.obs_data_get_string(s, "sound_warning_source")
+    sound_focus_file = obs.obs_data_get_string(s, "sound_focus_file")
+    sound_short_file = obs.obs_data_get_string(s, "sound_short_file")
+    sound_long_file  = obs.obs_data_get_string(s, "sound_long_file")
+    sound_warning_file = obs.obs_data_get_string(s, "sound_warning_file")
 
     color_focus = obs.obs_data_get_int(s, "color_focus")
     color_short_break = obs.obs_data_get_int(s, "color_short_break")
