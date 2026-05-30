@@ -2,7 +2,7 @@ obs = obslua
 global_settings = nil
 
 -- ==== Defaults ====
-timer_source_name = "PomodoroTimer"
+timer_source_name = "Pomodoro Timer"
 status_source_name = ""
 focus_minutes = 25
 short_break_minutes = 5
