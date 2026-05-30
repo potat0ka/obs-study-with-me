@@ -177,18 +177,6 @@ local function play_source(path)
         obs.obs_data_release(s)
         
         obs.obs_source_media_restart(src)
-        
-        -- Clear it after 10s so it doesn't replay on scene switch
-        local clear_audio
-        clear_audio = function()
-            obs.timer_remove(clear_audio)
-            local s2 = obs.obs_data_create()
-            obs.obs_data_set_string(s2, "local_file", "")
-            obs.obs_source_update(src, s2)
-            obs.obs_data_release(s2)
-        end
-        obs.timer_add(clear_audio, 10000)
-        
         obs.obs_source_release(src)
     end
 end
@@ -353,24 +341,31 @@ local function create_media_source_stub(name)
         obs.obs_data_set_bool(s, "is_local_file", true)
         obs.obs_data_set_bool(s, "looping", false)
         obs.obs_data_set_bool(s, "close_when_inactive", false)
-        obs.obs_data_set_bool(s, "restart_on_activate", true)
+        obs.obs_data_set_bool(s, "restart_on_activate", false)
         src = obs.obs_source_create("ffmpeg_source", name, s, nil)
         obs.obs_data_release(s)
-        
-        local cur_scene = obs.obs_frontend_get_current_scene()
-        if cur_scene then
-            local scene = obs.obs_scene_from_source(cur_scene)
-            if scene then
-                local item = obs.obs_scene_add(scene, src)
-                local pos = obs.vec2()
-                pos.x = -1000 -- Hide offscreen
-                pos.y = -1000
-                obs.obs_sceneitem_set_pos(item, pos)
-            end
-            obs.obs_source_release(cur_scene)
-        end
     end
-    if src then obs.obs_source_release(src) end
+    
+    if src then
+        local scenes = obs.obs_frontend_get_scenes()
+        if scenes then
+            for _, cur_scene in ipairs(scenes) do
+                local scene = obs.obs_scene_from_source(cur_scene)
+                if scene then
+                    local found = obs.obs_scene_find_source(scene, name)
+                    if not found then
+                        local item = obs.obs_scene_add(scene, src)
+                        local pos = obs.vec2()
+                        pos.x = -1000
+                        pos.y = -1000
+                        obs.obs_sceneitem_set_pos(item, pos)
+                    end
+                end
+            end
+            obs.source_list_release(scenes)
+        end
+        obs.obs_source_release(src)
+    end
 end
 
 function auto_setup_pressed(props, prop)
