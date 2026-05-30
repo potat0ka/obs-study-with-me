@@ -5,8 +5,8 @@ This Lua script completely automates your study streams so you can focus on work
 
 ## ✨ Features
 
-- **🪄 1-Click Auto-Setup**: Automatically generates "Study With Me - Focus" and "Study With Me - Break" scenes! It then automatically creates and positions all necessary text and media sources in both of them. 
-- **🎬 Auto-Scene Switching**: Automatically switches between your new "Focus" scene and your "Break" scene based on the timer.
+- **🪄 1-Click Auto-Setup**: Automatically generates **THREE** scenes: "Study With Me - Focus", "Study With Me - Short Break", and "Study With Me - Long Break". It automatically adds and positions all necessary text and media sources in all of them. 
+- **🎬 Auto-Scene Switching**: Automatically switches between your Focus, Short Break, and Long Break scenes based on the active timer.
 - **🛑 Stream Auto-Stop**: Going to bed? The script can automatically end your live stream when your final Long Break is over.
 - **📊 Daily Goal Tracker**: Keeps track of how many Pomodoro sessions you have completed during your stream.
 - **🔊 Reliable Audio Routing**: The script creates ONE unified "Pomodoro Alert" audio source in your mixer that dynamically plays your sound files. No phantom audio loading, and full control over your volume slider!
@@ -17,7 +17,7 @@ This Lua script completely automates your study streams so you can focus on work
 1. Open OBS Studio.
 2. Go to **Tools -> Scripts**.
 3. Click the **+** button and load `pomorodo.lua`.
-4. Select the script in the menu. At the very top of the properties, click the **🪄 Auto-Create Scene Setup (Recommended)** button. (This will instantly create your two scenes and all your text sources!)
+4. Select the script in the menu. At the very top of the properties, click the **🪄 Auto-Create Scene Setup (Recommended)** button. (This will instantly create your scenes and all your text sources!)
 5. Click **Defaults** at the bottom of the script window to auto-link the script to your newly created scenes and sources.
 6. Under the "Sounds" section in the script, click **Browse** to select your `.mp3` or `.wav` files for the Focus, Break, and Warning alerts.
 
@@ -29,4 +29,4 @@ Because this script uses standard OBS Media Sources, you need to tell OBS to out
 3. Find `Pomodoro Alert` and change **Audio Monitoring** to **"Monitor and Output"**.
 
 ## 💡 Customization
-Once you hit the Auto-Setup button, you can go into your two new scenes and freely move, resize, and change the fonts of the generated Text Sources. You can also add your webcam, background music, or custom overlays! The script will simply update the text values in the background.
+Once you hit the Auto-Setup button, you can go into your scenes and freely move, resize, and change the fonts of the generated Text Sources. You can also add your webcam, background music, or custom overlays! The script will simply update the text values in the background.

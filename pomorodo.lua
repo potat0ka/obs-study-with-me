@@ -14,7 +14,8 @@ clock_source_name = ""
 clock_format = "%I:%M %p"
 
 focus_scene_name = ""
-break_scene_name = ""
+short_break_scene_name = ""
+long_break_scene_name = ""
 
 daily_goal = 8
 total_sessions_completed = 0
@@ -237,10 +238,10 @@ local function set_mode(new_mode)
         switch_to_scene(focus_scene_name)
     elseif mode == "short_break" then
         time_left = math.max(1, short_break_minutes) * 60
-        switch_to_scene(break_scene_name)
+        switch_to_scene(short_break_scene_name)
     elseif mode == "long_break" then
         time_left = math.max(1, long_break_minutes) * 60
-        switch_to_scene(break_scene_name)
+        switch_to_scene(long_break_scene_name)
     end
     push_display()
 end
@@ -356,7 +357,7 @@ local function create_media_source_stub(name)
 end
 
 function auto_setup_pressed(props, prop)
-    local scene_names = {"Study With Me - Focus", "Study With Me - Break"}
+    local scene_names = {"Study With Me - Focus", "Study With Me - Short Break", "Study With Me - Long Break"}
     local scenes = {}
     local created_scenes = {}
     
@@ -415,7 +416,8 @@ function script_defaults(settings)
     obs.obs_data_set_default_string(settings, "current_subject", "Studying...")
     
     obs.obs_data_set_default_string(settings, "focus_scene_name", "Study With Me - Focus")
-    obs.obs_data_set_default_string(settings, "break_scene_name", "Study With Me - Break")
+    obs.obs_data_set_default_string(settings, "short_break_scene_name", "Study With Me - Short Break")
+    obs.obs_data_set_default_string(settings, "long_break_scene_name", "Study With Me - Long Break")
     
     obs.obs_data_set_default_string(settings, "timer_source_name", "Pomodoro Timer")
     obs.obs_data_set_default_string(settings, "status_source_name", "Pomodoro Status")
@@ -473,8 +475,11 @@ function script_properties()
     local p_fscene = obs.obs_properties_add_list(p, "focus_scene_name", "Focus Scene (Auto-switch)", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
     populate_scenes(p_fscene)
     
-    local p_bscene = obs.obs_properties_add_list(p, "break_scene_name", "Break Scene (Auto-switch)", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
-    populate_scenes(p_bscene)
+    local p_sscene = obs.obs_properties_add_list(p, "short_break_scene_name", "Short Break Scene (Auto-switch)", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
+    populate_scenes(p_sscene)
+    
+    local p_lscene = obs.obs_properties_add_list(p, "long_break_scene_name", "Long Break Scene (Auto-switch)", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
+    populate_scenes(p_lscene)
     
     obs.obs_properties_add_int(p, "daily_goal", "Daily Goal (Sessions)", 1, 100, 1)
     
@@ -535,7 +540,8 @@ function script_update(s)
     clock_format = obs.obs_data_get_string(s, "clock_format")
     
     focus_scene_name = obs.obs_data_get_string(s, "focus_scene_name")
-    break_scene_name = obs.obs_data_get_string(s, "break_scene_name")
+    short_break_scene_name = obs.obs_data_get_string(s, "short_break_scene_name")
+    long_break_scene_name = obs.obs_data_get_string(s, "long_break_scene_name")
     
     daily_goal = math.max(1, obs.obs_data_get_int(s, "daily_goal"))
     goal_source_name = obs.obs_data_get_string(s, "goal_source_name")
