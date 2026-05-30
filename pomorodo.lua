@@ -1,4 +1,5 @@
 obs = obslua
+global_settings = nil
 
 -- ==== Defaults ====
 timer_source_name = "PomodoroTimer"
@@ -406,6 +407,21 @@ function auto_setup_pressed(props, prop)
     end
     
     create_media_source_stub("Pomodoro Alert")
+    
+    if global_settings then
+        obs.obs_data_set_string(global_settings, "focus_scene_name", "Study With Me - Focus")
+        obs.obs_data_set_string(global_settings, "short_break_scene_name", "Study With Me - Short Break")
+        obs.obs_data_set_string(global_settings, "long_break_scene_name", "Study With Me - Long Break")
+        
+        obs.obs_data_set_string(global_settings, "timer_source_name", "Pomodoro Timer")
+        obs.obs_data_set_string(global_settings, "status_source_name", "Pomodoro Status")
+        obs.obs_data_set_string(global_settings, "clock_source_name", "Pomodoro Clock")
+        obs.obs_data_set_string(global_settings, "goal_source_name", "Pomodoro Goal")
+        obs.obs_data_set_string(global_settings, "subject_source_name", "Pomodoro Subject")
+        
+        script_update(global_settings)
+    end
+    
     return true
 end
 
@@ -533,6 +549,7 @@ function script_properties()
 end
 
 function script_update(s)
+    global_settings = s
     timer_source_name = obs.obs_data_get_string(s, "timer_source_name")
     status_source_name= obs.obs_data_get_string(s, "status_source_name")
     
