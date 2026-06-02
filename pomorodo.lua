@@ -9,6 +9,10 @@ short_break_minutes = 5
 long_break_minutes = 15
 sessions_before_long = 4
 stop_after_long_break = true
+
+-- Prep time
+enable_prep = true
+prep_minutes = 1
 stop_stream_after_long_break = true
 
 clock_source_name = ""
@@ -17,6 +21,7 @@ clock_format = "%I:%M %p"
 focus_scene_name = ""
 short_break_scene_name = ""
 long_break_scene_name = ""
+prep_scene_name = ""
 
 daily_goal = 8
 total_sessions_completed = 0
@@ -33,11 +38,13 @@ session_label = "Session"
 focus_message = "Focus Time!"
 short_break_message = "Short Break!"
 long_break_message = "Long Break!"
+prep_message = "Get Ready!"
 stopped_message = "Timer Stopped"
 paused_message = "Paused"
 label_focus = "🧠 FOCUS"
 label_short_break = "☕ BREAK"
 label_long_break = "🛌 LONG BREAK"
+label_prep = "⏱ PREP"
 
 -- End time display
 show_end_time = true
@@ -62,6 +69,7 @@ bgm_long_file = ""
 color_focus = 0x00FF00
 color_short_break = 0xFFFF00
 color_long_break = 0xFF0000
+color_prep = 0x00CFFF
 color_paused = 0xFFFFFF
 color_stopped = 0xAAAAAA
 
@@ -69,7 +77,7 @@ color_stopped = 0xAAAAAA
 auto_scene_name = ""
 
 -- State
-mode = "stopped"      -- "focus" | "short_break" | "long_break" | "paused" | "stopped"
+mode = "stopped"      -- "prep" | "focus" | "short_break" | "long_break" | "paused" | "stopped"
 prev_mode = "focus"
 time_left = 0
 session_count = 0
@@ -153,7 +161,8 @@ local function fmt_clock(ts)
 end
 
 local function current_label()
-    if mode == "focus" then return label_focus
+    if mode == "prep" then return label_prep
+    elseif mode == "focus" then return label_focus
     elseif mode == "short_break" then return label_short_break
     elseif mode == "long_break" then return label_long_break
     elseif mode == "paused" then return paused_message
@@ -234,10 +243,10 @@ end
 
 local function push_display()
     local base = fmt_mmss(time_left)
-    if show_mode_label and (mode == "focus" or mode == "short_break" or mode == "long_break") then
+    if show_mode_label and (mode == "prep" or mode == "focus" or mode == "short_break" or mode == "long_break") then
         base = current_label() .. " " .. sep_char .. " " .. base
     end
-    if mode ~= "stopped" and mode ~= "paused" then base = base .. session_suffix() end
+    if mode ~= "stopped" and mode ~= "paused" and mode ~= "prep" then base = base .. session_suffix() end
     if show_end_time and mode ~= "stopped" and mode ~= "paused" then
         local end_txt = string.format("%s %s", end_time_label, fmt_clock(os.time() + time_left))
         if end_time_inline then
@@ -247,10 +256,10 @@ local function push_display()
         end
     end
     set_text(timer_source_name, base)
-    local cmap = { focus=color_focus, short_break=color_short_break, long_break=color_long_break, paused=color_paused, stopped=color_stopped }
+    local cmap = { prep=color_prep, focus=color_focus, short_break=color_short_break, long_break=color_long_break, paused=color_paused, stopped=color_stopped }
     set_color(timer_source_name, cmap[mode] or 0xFFFFFF)
     if status_source_name ~= "" then
-        local m = { focus=focus_message, short_break=short_break_message, long_break=long_break_message, paused=paused_message, stopped=stopped_message }
+        local m = { prep=prep_message, focus=focus_message, short_break=short_break_message, long_break=long_break_message, paused=paused_message, stopped=stopped_message }
         set_text(status_source_name, m[mode])
     end
     if goal_source_name ~= "" then
@@ -263,7 +272,10 @@ end
 
 local function set_mode(new_mode)
     mode = new_mode
-    if mode == "focus" then
+    if mode == "prep" then
+        time_left = math.max(1, prep_minutes) * 60
+        switch_to_scene(prep_scene_name)
+    elseif mode == "focus" then
         time_left = math.max(1, focus_minutes) * 60
         switch_to_scene(focus_scene_name)
     elseif mode == "short_break" then
@@ -277,7 +289,10 @@ local function set_mode(new_mode)
 end
 
 local function end_of_segment()
-    if mode == "focus" then
+    if mode == "prep" then
+        -- Prep done -> begin first focus session
+        set_mode("focus")
+    elseif mode == "focus" then
         session_count = session_count + 1
         total_sessions_completed = total_sessions_completed + 1
         if sessions_before_long > 0 and (session_count % sessions_before_long == 0) then
@@ -299,11 +314,12 @@ local function end_of_segment()
             time_left = 0
             push_display()
         else
+            -- long break ended -> back to focus (no prep)
             play_source(sound_focus_file)
             set_mode("focus")
         end
     else
-        -- short_break ended -> back to focus
+        -- short break ended -> back to focus (no prep)
         play_source(sound_focus_file)
         set_mode("focus")
     end
@@ -324,8 +340,13 @@ function start_pressed(pressed)
     if not pressed then return end
     timer_running = true
     session_count = 0
-    set_mode("focus")
     obs.timer_add(tick, 1000)
+    -- Prep runs once at the very start only
+    if enable_prep and prep_minutes > 0 then
+        set_mode("prep")
+    else
+        set_mode("focus")
+    end
 end
 
 function pause_pressed(pressed)
@@ -393,9 +414,10 @@ end
 
 function auto_setup_pressed(props, prop)
     local scene_defs = {
-        {name="Study With Me - Focus",       bgm="Pomodoro BGM - Focus"},
-        {name="Study With Me - Short Break",  bgm="Pomodoro BGM - Short Break"},
-        {name="Study With Me - Long Break",   bgm="Pomodoro BGM - Long Break"}
+        {name="Study With Me - Prep",         bgm="Pomodoro BGM - Prep"},
+        {name="Study With Me - Focus",         bgm="Pomodoro BGM - Focus"},
+        {name="Study With Me - Short Break",   bgm="Pomodoro BGM - Short Break"},
+        {name="Study With Me - Long Break",    bgm="Pomodoro BGM - Long Break"}
     }
     local scene_objects = {}
 
@@ -462,6 +484,7 @@ function auto_setup_pressed(props, prop)
 
     -- Auto-link all names in settings
     if global_settings then
+        obs.obs_data_set_string(global_settings, "prep_scene_name",        "Study With Me - Prep")
         obs.obs_data_set_string(global_settings, "focus_scene_name",       "Study With Me - Focus")
         obs.obs_data_set_string(global_settings, "short_break_scene_name", "Study With Me - Short Break")
         obs.obs_data_set_string(global_settings, "long_break_scene_name",  "Study With Me - Long Break")
@@ -481,6 +504,10 @@ function script_defaults(settings)
     obs.obs_data_set_default_bool(settings, "stop_stream_after_long_break", true)
     obs.obs_data_set_default_string(settings, "clock_format", "%I:%M %p")
     obs.obs_data_set_default_string(settings, "current_subject", "Studying...")
+
+    obs.obs_data_set_default_bool(settings, "enable_prep", true)
+    obs.obs_data_set_default_int(settings, "prep_minutes", 1)
+    obs.obs_data_set_default_int(settings, "color_prep", 0x00CFFF)
     
     obs.obs_data_set_default_string(settings, "focus_scene_name", "Study With Me - Focus")
     obs.obs_data_set_default_string(settings, "short_break_scene_name", "Study With Me - Short Break")
@@ -558,6 +585,11 @@ function script_properties()
     local p_subj = obs.obs_properties_add_list(p, "subject_source_name", "Subject Source", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
     populate_text_sources(p_subj)
 
+    obs.obs_properties_add_bool(p, "enable_prep", "Enable Prep Time (before each focus session)")
+    obs.obs_properties_add_int(p, "prep_minutes", "Prep Time (min)", 1, 30, 1)
+    local p_pscene = obs.obs_properties_add_list(p, "prep_scene_name", "Prep Scene (Auto-switch)", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
+    populate_scenes(p_pscene)
+
     obs.obs_properties_add_int(p, "focus_minutes", "Focus (min)", 1, 240, 1)
     obs.obs_properties_add_int(p, "short_break_minutes", "Short Break (min)", 1, 120, 1)
     obs.obs_properties_add_int(p, "long_break_minutes", "Long Break (min)", 1, 240, 1)
@@ -585,6 +617,7 @@ function script_properties()
     obs.obs_properties_add_path(p, "bgm_short_file", "BGM: Short Break (looping)", obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
     obs.obs_properties_add_path(p, "bgm_long_file",  "BGM: Long Break (looping)",  obs.OBS_PATH_FILE, "*.mp3;*.wav", nil)
 
+    obs.obs_properties_add_color(p, "color_prep", "Color: Prep")
     obs.obs_properties_add_color(p, "color_focus", "Color: Focus")
     obs.obs_properties_add_color(p, "color_short_break", "Color: Short Break")
     obs.obs_properties_add_color(p, "color_long_break", "Color: Long Break")
@@ -621,6 +654,10 @@ function script_update(s)
     current_subject = obs.obs_data_get_string(s, "current_subject")
     subject_source_name = obs.obs_data_get_string(s, "subject_source_name")
 
+    enable_prep = obs.obs_data_get_bool(s, "enable_prep")
+    prep_minutes = math.max(1, obs.obs_data_get_int(s, "prep_minutes"))
+    prep_scene_name = obs.obs_data_get_string(s, "prep_scene_name")
+
     focus_minutes = math.max(1, obs.obs_data_get_int(s, "focus_minutes"))
     short_break_minutes = math.max(1, obs.obs_data_get_int(s, "short_break_minutes"))
     long_break_minutes  = math.max(1, obs.obs_data_get_int(s, "long_break_minutes"))
@@ -651,6 +688,7 @@ function script_update(s)
     update_bgm_source("Pomodoro BGM - Short Break", bgm_short_file)
     update_bgm_source("Pomodoro BGM - Long Break",  bgm_long_file)
 
+    color_prep    = obs.obs_data_get_int(s, "color_prep")
     color_focus = obs.obs_data_get_int(s, "color_focus")
     color_short_break = obs.obs_data_get_int(s, "color_short_break")
     color_long_break  = obs.obs_data_get_int(s, "color_long_break")
