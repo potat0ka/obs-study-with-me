@@ -148,12 +148,10 @@ last_color_cache = {}
 notification_message = ""
 notification_expire = 0
 transition_in_progress = false
+segment_changing = false          -- blocks tick from running during a segment transition
 pending_scene_switch = nil
-scene_switch_timer_active = false
+scene_switch_delay = 0
 frontend_event_callback = nil
-
-tick_callback = nil
-process_pending_scene_switch_callback = nil
 
 -- ==== Utils ====
 local function file_exists(path)
@@ -190,116 +188,73 @@ end
 
 local function set_text(name, text)
     if not name or name == "" then return end
+    text = text or ""
     if last_text_cache[name] == text then
         debug_log(string.format("set_text skip unchanged %s", name))
         return
     end
     local src = get_source(name)
     if src then
-        local s = obs.obs_data_create()
-        obs.obs_data_set_string(s, "text", text)
-        obs.obs_source_update(src, s)
-        obs.obs_data_release(s)
+        local id = obs.obs_source_get_id(src)
+        if id ~= "scene" and id ~= "group" then
+            local s = obs.obs_data_create()
+            obs.obs_data_set_string(s, "text", text)
+            obs.obs_source_update(src, s)
+            obs.obs_data_release(s)
+            last_text_cache[name] = text
+        end
         obs.obs_source_release(src)
-        last_text_cache[name] = text
     end
 end
 
 local function set_color(name, color)
     if not name or name == "" then return end
+    color = color or 0xFFFFFF
     if last_color_cache[name] == color then
         debug_log(string.format("set_color skip unchanged %s", name))
         return
     end
     local src = get_source(name)
     if src then
-        local s = obs.obs_data_create()
-        obs.obs_data_set_int(s, "color", color)
-        obs.obs_source_update(src, s)
-        obs.obs_data_release(s)
+        local id = obs.obs_source_get_id(src)
+        if id ~= "scene" and id ~= "group" then
+            local s = obs.obs_data_create()
+            obs.obs_data_set_int(s, "color", color)
+            obs.obs_source_update(src, s)
+            obs.obs_data_release(s)
+            last_color_cache[name] = color
+        end
         obs.obs_source_release(src)
-        last_color_cache[name] = color
     end
 end
 
-local function process_pending_scene_switch_impl()
-    if not pending_scene_switch then
-        scene_switch_timer_active = false
-        obs.timer_remove(process_pending_scene_switch_callback)
-        return
-    end
-
-    local scene_name = pending_scene_switch
-    pending_scene_switch = nil
-    scene_switch_timer_active = false
-
-    if not scene_name or scene_name == "" then
-        obs.script_log(obs.LOG_WARNING, "[Pomodoro] process_pending_scene_switch got empty scene name")
-        obs.timer_remove(process_pending_scene_switch_callback)
-        return
-    end
-
-    local scenes = obs.obs_frontend_get_scenes()
-    if scenes == nil then
-        obs.script_log(obs.LOG_WARNING, "[Pomodoro] No scenes available for pending switch")
-        obs.timer_remove(process_pending_scene_switch_callback)
-        return
-    end
-
-    local switched = false
-    for _, scene in ipairs(scenes) do
-        if scene then
-            local n = obs.obs_source_get_name(scene)
-            if n == scene_name then
-                obs.obs_frontend_set_current_scene(scene)
-                switched = true
-                obs.script_log(obs.LOG_INFO, string.format("[Pomodoro] Delayed scene switch executed: %s", scene_name))
-                break
-            end
+-- Scene switch using low-level output channel API.
+-- obs_set_output_source(0, src) switches the program output WITHOUT
+-- touching the Qt UI thread, so it CANNOT deadlock OBS.
+local function do_scene_switch_now(scene_name)
+    if not scene_name or scene_name == "" then return end
+    local ok, err = pcall(function()
+        local src = obs.obs_get_source_by_name(scene_name)
+        if not src then
+            debug_log("Scene not found: " .. scene_name)
+            return
         end
-    end
-    obs.source_list_release(scenes)
-    obs.timer_remove(process_pending_scene_switch_callback)
-    if not switched then
-        obs.script_log(obs.LOG_WARNING, string.format("[Pomodoro] Delayed scene switch failed: %s", scene_name))
-    end
-end
-
-local function process_pending_scene_switch()
-    local ok, err = pcall(process_pending_scene_switch_impl)
+        -- Low-level switch: bypasses frontend/Qt entirely (no freeze)
+        obs.obs_set_output_source(0, src)
+        obs.obs_source_release(src)
+        debug_log("Scene switch done (output channel): " .. scene_name)
+    end)
     if not ok then
-        obs.script_log(obs.LOG_WARNING, string.format("[Pomodoro] process_pending_scene_switch error: %s", tostring(err)))
-        scene_switch_timer_active = false
-        pending_scene_switch = nil
-        if process_pending_scene_switch_callback then
-            obs.timer_remove(process_pending_scene_switch_callback)
-        else
-            obs.timer_remove(process_pending_scene_switch)
-        end
+        -- Fallback silently — timer keeps running even if scene switch fails
+        obs.script_log(obs.LOG_WARNING, "[Pomodoro] scene switch skipped: " .. tostring(err))
     end
 end
 
-process_pending_scene_switch_callback = process_pending_scene_switch
-
+-- Queue a scene switch for 2 ticks in the future (gives OBS UI time to be idle)
 local function schedule_scene_switch(name)
-    if not name or name == "" then
-        obs.script_log(obs.LOG_WARNING, "[Pomodoro] schedule_scene_switch called with invalid name")
-        return
-    end
-    if pending_scene_switch == name and scene_switch_timer_active then
-        debug_log(string.format("schedule_scene_switch ignored duplicate %s", name))
-        return
-    end
-    debug_log(string.format("schedule_scene_switch queuing %s", name))
+    if not name or name == "" then return end
     pending_scene_switch = name
-    if not scene_switch_timer_active then
-        scene_switch_timer_active = true
-        if process_pending_scene_switch_callback then
-            obs.timer_add(process_pending_scene_switch_callback, 100)
-        else
-            obs.timer_add(process_pending_scene_switch, 100)
-        end
-    end
+    scene_switch_delay = 2
 end
 
 local function switch_to_scene(name)
@@ -307,7 +262,30 @@ local function switch_to_scene(name)
 end
 
 local function tick_impl()
+    -- While segment is changing, do nothing (prevents time_left going negative)
+    if segment_changing then return end
+
+    -- Handle deferred scene switch (runs on its own tick, isolated from timer logic)
+    if pending_scene_switch then
+        if scene_switch_delay > 0 then
+            scene_switch_delay = scene_switch_delay - 1
+        else
+            local name = pending_scene_switch
+            pending_scene_switch = nil
+            do_scene_switch_now(name)
+        end
+        -- Always return here — never mix scene switch ticks with countdown ticks
+        return
+    end
+
     if not timer_running or mode == "paused" or mode == "stopped" then return end
+
+    -- Safety: if time_left somehow went deeply negative, recover
+    if time_left < -2 then
+        obs.script_log(obs.LOG_WARNING, "[Pomodoro] time_left runaway detected, recovering")
+        time_left = 1
+    end
+
     if mode == "prep" then
         if time_left <= countdown_seconds + 1 and time_left > 1 and sound_countdown_file ~= "" then
             play_source(sound_countdown_file)
@@ -324,13 +302,13 @@ local function tick_impl()
     end
 end
 
-local function tick()
+-- tick and clock_tick are GLOBAL so OBS timer always calls the latest version
+-- after a script reload, preventing stale-closure nil errors
+function tick()
     safe_call(tick_impl, "tick")
 end
 
-tick_callback = tick
-
-local function clock_tick()
+function clock_tick()
     if clock_source_name ~= "" then
         local fmt = clock_format
         if fmt == "" then fmt = "%I:%M %p" end
@@ -400,40 +378,52 @@ end
 local function update_bgm_source(name, path)
     local src = obs.obs_get_source_by_name(name)
     if src then
-        local s = obs.obs_data_create()
-        obs.obs_data_set_string(s, "local_file", path or "")
-        obs.obs_data_set_bool(s, "is_local_file", true)
-        obs.obs_data_set_bool(s, "looping", true)
-        obs.obs_data_set_bool(s, "restart_on_activate", true)
-        obs.obs_source_update(src, s)
-        obs.obs_data_release(s)
+        local id = obs.obs_source_get_id(src)
+        if id ~= "scene" and id ~= "group" then
+            local current_settings = obs.obs_source_get_settings(src)
+            local current_file = obs.obs_data_get_string(current_settings, "local_file")
+            obs.obs_data_release(current_settings)
+            
+            if current_file ~= (path or "") then
+                local s = obs.obs_data_create()
+                obs.obs_data_set_string(s, "local_file", path or "")
+                obs.obs_data_set_bool(s, "is_local_file", true)
+                obs.obs_data_set_bool(s, "looping", true)
+                obs.obs_data_set_bool(s, "restart_on_activate", true)
+                obs.obs_source_update(src, s)
+                obs.obs_data_release(s)
+            end
+        end
         obs.obs_source_release(src)
     end
 end
 
-local function play_source(path)
+function play_source(path)
     if not enable_sounds or not path or path == "" then return end
     if not file_exists(path) then return end
     
     local src = obs.obs_get_source_by_name("Pomodoro Alert")
     if not src then return end
     
-    -- Set file then force restart
-    local s = obs.obs_data_create()
-    obs.obs_data_set_string(s, "local_file", "")
-    obs.obs_source_update(src, s)
-    obs.obs_data_release(s)
-    
-    local s2 = obs.obs_data_create()
-    obs.obs_data_set_string(s2, "local_file", path)
-    obs.obs_data_set_bool(s2, "is_local_file", true)
-    obs.obs_data_set_bool(s2, "looping", false)
-    obs.obs_data_set_bool(s2, "restart_on_activate", false)
-    obs.obs_data_set_bool(s2, "close_when_inactive", false)
-    obs.obs_source_update(src, s2)
-    obs.obs_data_release(s2)
-    
-    obs.obs_source_media_restart(src)
+    local id = obs.obs_source_get_id(src)
+    if id ~= "scene" and id ~= "group" then
+        local current_settings = obs.obs_source_get_settings(src)
+        local current_file = obs.obs_data_get_string(current_settings, "local_file")
+        obs.obs_data_release(current_settings)
+        
+        if current_file ~= path then
+            local s2 = obs.obs_data_create()
+            obs.obs_data_set_string(s2, "local_file", path)
+            obs.obs_data_set_bool(s2, "is_local_file", true)
+            obs.obs_data_set_bool(s2, "looping", false)
+            obs.obs_data_set_bool(s2, "restart_on_activate", false)
+            obs.obs_data_set_bool(s2, "close_when_inactive", false)
+            obs.obs_source_update(src, s2)
+            obs.obs_data_release(s2)
+        end
+        
+        obs.obs_source_media_restart(src)
+    end
     obs.obs_source_release(src)
 end
 
@@ -457,7 +447,7 @@ local function next_mode_after_current()
     return nil
 end
 
-local function push_display()
+function push_display()
     local base
     if mode == "prep" then
         if time_left > countdown_seconds + 1 then
@@ -490,7 +480,7 @@ local function push_display()
 
     if status_source_name ~= "" then
         local m = { prep=prep_message, focus=focus_message, short_break=short_break_message, long_break=long_break_message, paused=paused_message, stopped=stopped_message }
-        set_text(status_source_name, m[mode])
+        set_text(status_source_name, m[mode] or "")
     end
 
     if goal_source_name ~= "" then
@@ -544,7 +534,7 @@ end
 local function set_mode_impl(new_mode)
     mode = new_mode
     local scene_name = nil
-    obs.script_log(obs.LOG_INFO, string.format("[Pomodoro] set_mode %s (timer_running=%s, time_left=%d)", new_mode, tostring(timer_running), time_left))
+    debug_log(string.format("set_mode %s (timer_running=%s, time_left=%d)", new_mode, tostring(timer_running), time_left))
     if mode == "prep" then
         time_left = math.max(1, countdown_seconds) + 2
         scene_name = prep_scene_name
@@ -560,8 +550,6 @@ local function set_mode_impl(new_mode)
     end
     if scene_name and scene_name ~= "" then
         schedule_scene_switch(scene_name)
-    else
-        obs.script_log(obs.LOG_WARNING, string.format("[Pomodoro] set_mode %s has invalid scene name", new_mode))
     end
     push_display()
 end
@@ -571,21 +559,10 @@ local function set_mode(new_mode)
 end
 
 local function stop_timer()
-    if tick_callback then
-        obs.timer_remove(tick_callback)
-    else
-        obs.timer_remove(tick)
-    end
-    if scene_switch_timer_active then
-        if process_pending_scene_switch_callback then
-            obs.timer_remove(process_pending_scene_switch_callback)
-        else
-            obs.timer_remove(process_pending_scene_switch)
-        end
-        scene_switch_timer_active = false
-    end
     pending_scene_switch = nil
+    scene_switch_delay = 0
     transition_in_progress = false
+    segment_changing = false
     timer_running = false
 end
 
@@ -595,6 +572,7 @@ local function end_of_segment_impl()
         return
     end
     transition_in_progress = true
+    segment_changing = true   -- BLOCK tick from running during transition
     obs.script_log(obs.LOG_INFO, string.format("[Pomodoro] end_of_segment current=%s timer_running=%s time_left=%d", mode, tostring(timer_running), time_left))
     if mode == "prep" then
         play_source(sound_focus_file)
@@ -634,14 +612,17 @@ local function end_of_segment_impl()
         set_mode("focus")
     end
     transition_in_progress = false
+    segment_changing = false  -- Re-allow tick after transition is fully complete
 end
 
-local function end_of_segment()
+function end_of_segment()
     local ok, err = pcall(end_of_segment_impl)
     if not ok then
         obs.script_log(obs.LOG_WARNING, string.format("[Pomodoro] end_of_segment error: %s", tostring(err)))
     end
+    -- Always clear both flags so timer never stays permanently blocked
     transition_in_progress = false
+    segment_changing = false
 end
 
 -- duplicate tick removed; using tick wrapper defined earlier
@@ -650,14 +631,13 @@ end
 function start_pressed(pressed)
     if not pressed then return end
     if timer_running then
-        obs.script_log(obs.LOG_INFO, "[Pomodoro] start_pressed ignored because timer already running")
+        debug_log("start_pressed ignored because timer already running")
         return
     end
     stop_timer()
     timer_running = true
     session_count = 0
-    obs.timer_add(tick_callback, 1000)
-    if enable_prep and countdown_seconds > 0 then
+    if enable_prep and countdown_seconds > 0 and prep_scene_name and prep_scene_name ~= "" then
         set_mode("prep")
     else
         set_mode("focus")
@@ -723,7 +703,6 @@ function focus_pressed(pressed)
         if not timer_running then
             stop_timer()
             timer_running = true
-            obs.timer_add(tick_callback, 1000)
         end
         set_mode("focus")
     end
@@ -734,7 +713,6 @@ function short_break_pressed(pressed)
         if not timer_running then
             stop_timer()
             timer_running = true
-            obs.timer_add(tick_callback, 1000)
         end
         set_mode("short_break")
     end
@@ -745,7 +723,6 @@ function long_break_pressed(pressed)
         if not timer_running then
             stop_timer()
             timer_running = true
-            obs.timer_add(tick_callback, 1000)
         end
         set_mode("long_break")
     end
@@ -1067,12 +1044,12 @@ function script_properties()
     local p_auto = obs.obs_properties_add_list(p, "auto_scene_name", "Auto-start on Scene", obs.OBS_COMBO_TYPE_EDITABLE, obs.OBS_COMBO_FORMAT_STRING)
     populate_scenes(p_auto)
 
-    obs.obs_properties_add_button(p, "btn_start", "▶ Start", start_pressed)
-    obs.obs_properties_add_button(p, "btn_pause", "⏸ Pause", pause_pressed)
-    obs.obs_properties_add_button(p, "btn_resume", "⏵ Resume", resume_pressed)
-    obs.obs_properties_add_button(p, "btn_reset", "⟲ Reset", reset_pressed)
-    obs.obs_properties_add_button(p, "btn_skip",  "⤼ Skip",  skip_pressed)
-    obs.obs_properties_add_button(p, "btn_reset_goal", "⟲ Reset Daily Goal", reset_goal_pressed)
+    obs.obs_properties_add_button(p, "btn_start", "▶ Start", function(props, prop) start_pressed(true); return true end)
+    obs.obs_properties_add_button(p, "btn_pause", "⏸ Pause", function(props, prop) pause_pressed(true); return true end)
+    obs.obs_properties_add_button(p, "btn_resume", "⏵ Resume", function(props, prop) resume_pressed(true); return true end)
+    obs.obs_properties_add_button(p, "btn_reset", "⟲ Reset", function(props, prop) reset_pressed(true); return true end)
+    obs.obs_properties_add_button(p, "btn_skip",  "⤼ Skip",  function(props, prop) skip_pressed(true); return true end)
+    obs.obs_properties_add_button(p, "btn_reset_goal", "⟲ Reset Daily Goal", function(props, prop) reset_goal_pressed(true); return true end)
     return p
 end
 
@@ -1205,20 +1182,7 @@ function script_load(settings)
     hk_load(settings, hk_long_break, "pomo_long_break")
 
     obs.timer_add(clock_tick, 1000)
-
-    frontend_event_callback = function(ev)
-        if ev == obs.OBS_FRONTEND_EVENT_SCENE_CHANGED and auto_scene_name ~= "" then
-            local cur = obs.obs_frontend_get_current_scene()
-            if cur then
-                local nm = obs.obs_source_get_name(cur)
-                if nm == auto_scene_name and not timer_running then
-                    start_pressed(true)
-                end
-                obs.obs_source_release(cur)
-            end
-        end
-    end
-    obs.obs_frontend_add_event_callback(frontend_event_callback)
+    obs.timer_add(tick, 1000)
 end
 
 function script_save(settings)
@@ -1240,9 +1204,6 @@ end
 
 function script_unload()
     obs.timer_remove(clock_tick)
+    obs.timer_remove(tick)
     stop_timer()
-    if frontend_event_callback then
-        obs.obs_frontend_remove_event_callback(frontend_event_callback)
-        frontend_event_callback = nil
-    end
 end
