@@ -88,6 +88,9 @@ color_stopped = 0xAAAAAA
 -- Auto-start
 auto_scene_name = ""
 
+-- Scene switching
+enable_scene_switch = true   -- set false to freely edit scenes without the timer taking over
+
 -- State
 mode = "stopped"      -- "prep" | "focus" | "short_break" | "long_break" | "paused" | "stopped"
 prev_mode = "focus"
@@ -258,6 +261,10 @@ local function schedule_scene_switch(name)
 end
 
 local function switch_to_scene(name)
+    if not enable_scene_switch then
+        debug_log("Scene switch skipped (enable_scene_switch = false): " .. (name or ""))
+        return
+    end
     schedule_scene_switch(name)
 end
 
@@ -890,6 +897,7 @@ function auto_setup_pressed(props, prop)
 end
 
 function script_defaults(settings)
+    obs.obs_data_set_default_bool(settings, "enable_scene_switch", true)
     obs.obs_data_set_default_bool(settings, "stop_after_long_break", true)
     obs.obs_data_set_default_bool(settings, "stop_stream_after_long_break", true)
     obs.obs_data_set_default_string(settings, "clock_format", "%I:%M %p")
@@ -925,6 +933,10 @@ end
 function script_properties()
     local p = obs.obs_properties_create()
     obs.obs_properties_add_button(p, "btn_auto_setup", "🪄 Auto-Create Scene Setup (Recommended)", auto_setup_pressed)
+
+    -- Scene switch control
+    obs.obs_properties_add_bool(p, "enable_scene_switch",
+        "🎬 Enable Auto Scene Switching (disable this to freely edit/switch scenes manually)")
     
     local function populate_text_sources(list_property)
         obs.obs_property_list_clear(list_property)
@@ -1140,6 +1152,7 @@ function script_update(s)
     color_paused = obs.obs_data_get_int(s, "color_paused")
     color_stopped= obs.obs_data_get_int(s, "color_stopped")
 
+    enable_scene_switch = obs.obs_data_get_bool(s, "enable_scene_switch")
     auto_scene_name = obs.obs_data_get_string(s, "auto_scene_name")
 
     push_display()
