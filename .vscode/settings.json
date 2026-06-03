@@ -1,4 +1,7 @@
 {
+    "files.eol": "\r\n",
+    "editor.rulers": [120],
+    "lua.runtime.version": "Lua 5.1",
     "chat.tools.terminal.autoApprove": {
         "copy": true
     }

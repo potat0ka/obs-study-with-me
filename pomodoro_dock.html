@@ -5,59 +5,211 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pomodoro Control Dock</title>
     <style>
-        body { font-family: Arial, sans-serif; background:#1a1a1a; color:#eee; margin:0; padding:16px; }
-        h1 { font-size: 18px; margin-top:0; }
-        .section { margin-bottom: 18px; }
-        .field { margin-bottom:12px; }
-        .field label { display:block; font-size:12px; color:#aaa; margin-bottom:4px; }
-        .field input { width:100%; padding:8px; border-radius:6px; border:1px solid #333; background:#111; color:#eee; }
-        .buttons { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
-        button { padding:12px 10px; border:none; border-radius:8px; background:#444; color:#eee; cursor:pointer; font-weight:600; }
-        button:hover { background:#555; }
-        button.connect { background:#1976d2; }
-        button.connect:hover { background:#1e88e5; }
-        .status { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #111; border:1px solid #333; min-height: 46px; }
-        .status.success { border-color: #2e7d32; }
-        .status.error { border-color: #c62828; }
-        .status.info { border-color: #1565c0; }
+        :root {
+            --bg: #0e1014;
+            --surface: #161b24;
+            --surface2: #1e2535;
+            --border: #2a3650;
+            --text: #dee4ee;
+            --muted: #8a98b7;
+            --accent: #4b6ed2;
+            --accent-hover: #5d80e8;
+            --success: #4ade80;
+            --error: #f87171;
+            --warn: #fbbf24;
+            --focus-col: #00FF00;
+            --break-col: #FFFF00;
+            --long-col: #FF6B6B;
+            --prep-col: #00CFFF;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 14px;
+        }
+        h1 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            margin-bottom: 4px;
+        }
+        .subtitle {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 14px;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+        .card-title {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 10px;
+        }
+        .field { margin-bottom: 8px; }
+        .field label {
+            display: block;
+            font-size: 0.78rem;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+        .field input[type="text"],
+        .field input[type="password"] {
+            width: 100%;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            color: var(--text);
+            padding: 8px 10px;
+            font-size: 0.88rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .field input:focus { border-color: var(--accent); }
+        .field-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.82rem;
+            color: var(--muted);
+            margin-top: 6px;
+        }
+        .field-row input[type="checkbox"] { accent-color: var(--accent); }
+        .btn-connect {
+            width: 100%;
+            margin-top: 8px;
+            padding: 10px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.12s;
+        }
+        .btn-connect:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        #statusBox {
+            margin-top: 8px;
+            padding: 8px 10px;
+            border-radius: 9px;
+            font-size: 0.8rem;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            min-height: 32px;
+            line-height: 1.4;
+        }
+        #statusBox.success { color: var(--success); border-color: rgba(74,222,128,0.3); }
+        #statusBox.error   { color: var(--error);   border-color: rgba(248,113,113,0.3); }
+        #statusBox.info    { color: #93c5fd;         border-color: rgba(147,197,253,0.25); }
+
+        /* Timer controls */
+        .section-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+        .btn-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 7px;
+            margin-bottom: 10px;
+        }
+        .btn-grid.cols3 { grid-template-columns: repeat(3, 1fr); }
+        button.ctrl {
+            padding: 11px 8px;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.14s, transform 0.12s, opacity 0.14s;
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        button.ctrl:hover { transform: translateY(-1px); background: #283250; border-color: var(--accent); }
+        button.ctrl.start   { background: #1a3d26; border-color: #2e6b42; color: #86efac; }
+        button.ctrl.start:hover   { background: #205030; }
+        button.ctrl.stop    { background: #3d1a1a; border-color: #6b2e2e; color: #fca5a5; }
+        button.ctrl.stop:hover    { background: #502020; }
+        button.ctrl.pause   { background: #3d341a; border-color: #6b5a2e; color: #fde68a; }
+        button.ctrl.pause:hover   { background: #504020; }
+        button.ctrl.skip    { background: #1a2e3d; border-color: #2e4e6b; color: #93c5fd; }
+        button.ctrl.skip:hover    { background: #204050; }
+        button.ctrl.focus   { color: #bbf7d0; border-color: #4ade80; }
+        button.ctrl.focus:hover   { background: #1a3520; }
+        button.ctrl.sbreak  { color: #fef08a; border-color: #facc15; }
+        button.ctrl.sbreak:hover  { background: #35300a; }
+        button.ctrl.lbreak  { color: #fca5a5; border-color: #f87171; }
+        button.ctrl.lbreak:hover  { background: #3d1a1a; }
+        .version-box {
+            text-align: center;
+            font-size: 0.72rem;
+            color: var(--muted);
+            margin-top: 6px;
+        }
     </style>
 </head>
 <body>
-    <h1>Pomodoro Control Dock</h1>
-    <div class="section">
+    <h1>🍅 Pomodoro Control</h1>
+    <p class="subtitle">OBS WebSocket control dock — Study With Me</p>
+
+    <div class="card">
+        <div class="card-title">⚙ Connection</div>
         <div class="field">
             <label for="host">OBS WebSocket Host</label>
             <input id="host" type="text" value="127.0.0.1">
         </div>
         <div class="field">
-            <label for="port">OBS WebSocket Port</label>
+            <label for="port">Port</label>
             <input id="port" type="text" value="4455">
         </div>
         <div class="field">
-            <label for="password">OBS WebSocket Password</label>
-            <input id="password" type="password" placeholder="Leave empty if no password">
+            <label for="password">Password</label>
+            <input id="password" type="password" placeholder="Leave empty if none">
         </div>
-        <div class="field">
-            <label><input id="legacy" type="checkbox"> Use legacy OBS WebSocket 4.x protocol (port 4444)</label>
+        <div class="field-row">
+            <input id="legacy" type="checkbox">
+            <label for="legacy">Use legacy OBS WebSocket 4.x (port 4444)</label>
         </div>
-        <button class="connect" onclick="connectWebSocket()">Connect</button>
+        <button class="btn-connect" onclick="connectWebSocket()">Connect</button>
+        <div id="statusBox">Disconnected</div>
+        <div class="version-box" id="versionBox">Protocol: unknown</div>
     </div>
 
-    <div class="section buttons">
-        <button onclick="triggerHotkey('pomo_start')">Start</button>
-        <button onclick="triggerHotkey('pomo_pause')">Pause</button>
-        <button onclick="triggerHotkey('pomo_resume')">Resume</button>
-        <button onclick="triggerHotkey('pomo_toggle')">Toggle</button>
-        <button onclick="triggerHotkey('pomo_skip')">Skip</button>
-        <button onclick="triggerHotkey('pomo_reset')">Reset</button>
-        <button onclick="triggerHotkey('pomo_stop')">Stop</button>
-        <button onclick="triggerHotkey('pomo_focus')">Focus</button>
-        <button onclick="triggerHotkey('pomo_short_break')">Short Break</button>
-        <button onclick="triggerHotkey('pomo_long_break')">Long Break</button>
+    <div class="card">
+        <div class="section-label">▶ Timer Controls</div>
+        <div class="btn-grid">
+            <button class="ctrl start"  onclick="triggerHotkey('pomo_start')">▶ Start</button>
+            <button class="ctrl pause"  onclick="triggerHotkey('pomo_pause')">⏸ Pause</button>
+            <button class="ctrl"        onclick="triggerHotkey('pomo_resume')">⏵ Resume</button>
+            <button class="ctrl"        onclick="triggerHotkey('pomo_toggle')">⇌ Toggle</button>
+            <button class="ctrl skip"   onclick="triggerHotkey('pomo_skip')">⤼ Skip</button>
+            <button class="ctrl"        onclick="triggerHotkey('pomo_reset')">⟲ Reset</button>
+            <button class="ctrl stop"   onclick="triggerHotkey('pomo_stop')" style="grid-column: span 2;">⏹ Stop</button>
+        </div>
+        <div class="section-label">⚡ Jump To</div>
+        <div class="btn-grid cols3">
+            <button class="ctrl focus"  onclick="triggerHotkey('pomo_focus')">🧠 Focus</button>
+            <button class="ctrl sbreak" onclick="triggerHotkey('pomo_short_break')">☕ Short</button>
+            <button class="ctrl lbreak" onclick="triggerHotkey('pomo_long_break')">🛌 Long</button>
+        </div>
     </div>
-
-    <div class="section status" id="statusBox">Disconnected</div>
-    <div class="section status info" id="versionBox">Protocol: unknown</div>
 
     <script>
         let socket = null;
@@ -68,12 +220,11 @@
         function updateStatus(message, level = 'info') {
             const box = document.getElementById('statusBox');
             box.textContent = message;
-            box.className = 'section status ' + level;
+            box.className = level;
         }
 
         function updateVersion(message) {
-            const box = document.getElementById('versionBox');
-            box.textContent = message;
+            document.getElementById('versionBox').textContent = message;
         }
 
         function sendJSON(payload) {
@@ -106,9 +257,7 @@
             const digest = await crypto.subtle.digest('SHA-256', data);
             const bytes = new Uint8Array(digest);
             let binary = '';
-            for (let i = 0; i < bytes.byteLength; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
+            for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
             return btoa(binary);
         }
 
@@ -117,82 +266,57 @@
             const port = document.getElementById('port').value.trim();
             const password = document.getElementById('password').value;
             useLegacy = document.getElementById('legacy').checked;
-            if (!host || !port) {
-                updateStatus('Enter host and port first.', 'error');
-                return;
-            }
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.close();
-            }
-            const protocol = useLegacy ? 'ws' : 'ws';
-            const url = `${protocol}://${host}:${port}`;
-            updateStatus('Connecting to ' + url + (useLegacy ? ' (legacy)' : ''), 'info');
-            updateVersion('Protocol: ' + (useLegacy ? 'Legacy OBS WebSocket 4.x' : 'OBS WebSocket 5.x'));
+            if (!host || !port) { updateStatus('Enter host and port first.', 'error'); return; }
+            if (socket && socket.readyState === WebSocket.OPEN) socket.close();
+            const url = `ws://${host}:${port}`;
+            updateStatus('Connecting to ' + url + (useLegacy ? ' (legacy)' : '') + '…', 'info');
+            updateVersion('Protocol: ' + (useLegacy ? 'OBS WebSocket 4.x (legacy)' : 'OBS WebSocket 5.x'));
             socket = new WebSocket(url);
             socket.onopen = async () => {
-                updateStatus('Connected. Checking auth...', 'info');
+                updateStatus('Connected. Checking auth…', 'info');
                 try {
                     const authInfo = await sendRequest('GetAuthRequired', {});
                     const authRequired = useLegacy ? authInfo.authRequired === true : authInfo.authRequired;
                     if (authRequired) {
-                        if (!password) {
-                            updateStatus('Password required for OBS WebSocket.', 'error');
-                            return;
-                        }
+                        if (!password) { updateStatus('Password required for OBS WebSocket.', 'error'); return; }
                         const secret = await sha256Base64(password + authInfo.salt);
                         const auth = await sha256Base64(secret + authInfo.challenge);
-                        if (useLegacy) {
-                            await sendRequest('Authenticate', { auth });
-                        } else {
-                            await sendRequest('Authenticate', { auth });
-                        }
+                        await sendRequest('Authenticate', { auth });
                     }
-                    updateStatus('Authenticated and ready.', 'success');
+                    updateStatus('✓ Authenticated and ready.', 'success');
                 } catch (error) {
                     updateStatus('Auth failed: ' + error, 'error');
                 }
             };
             socket.onmessage = (event) => {
-                const message = JSON.parse(event.data);
+                let message;
+                try { message = JSON.parse(event.data); } catch { return; }
                 if (!useLegacy && message.op === 7 && message.d && message.d.requestId) {
                     const pending = pendingRequests[message.d.requestId];
                     if (pending) {
                         delete pendingRequests[message.d.requestId];
-                        if (message.d.status && message.d.status.code === 0) {
-                            pending.resolve(message.d.responseData || {});
-                        } else {
-                            pending.reject(message.d.error || 'Unknown error');
-                        }
+                        if (message.d.status && message.d.status.code === 0) pending.resolve(message.d.responseData || {});
+                        else pending.reject(message.d.error || 'Unknown error');
                     }
                 }
                 if (useLegacy && message['message-id']) {
                     const pending = pendingRequests[message['message-id']];
                     if (pending) {
                         delete pendingRequests[message['message-id']];
-                        if (message.status === 'ok') {
-                            pending.resolve(message);
-                        } else {
-                            pending.reject(message.error || 'Unknown error');
-                        }
+                        if (message.status === 'ok') pending.resolve(message);
+                        else pending.reject(message.error || 'Unknown error');
                     }
                 }
             };
-            socket.onerror = (event) => {
-                updateStatus('WebSocket error: ' + (event.message || 'unknown'), 'error');
-            };
-            socket.onclose = (event) => {
-                updateStatus('Disconnected (' + event.code + '): ' + (event.reason || 'No reason'), 'error');
-            };
+            socket.onerror = () => updateStatus('WebSocket error.', 'error');
+            socket.onclose = (e) => updateStatus('Disconnected (' + e.code + ')' + (e.reason ? ': ' + e.reason : ''), 'error');
         }
 
         async function triggerHotkey(name) {
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                updateStatus('Not connected to OBS WebSocket.', 'error');
-                return;
-            }
+            if (!socket || socket.readyState !== WebSocket.OPEN) { updateStatus('Not connected to OBS.', 'error'); return; }
             try {
                 await sendRequest('TriggerHotkeyByName', { hotkeyName: name });
-                updateStatus('Triggered ' + name, 'success');
+                updateStatus('✓ Triggered: ' + name, 'success');
             } catch (error) {
                 updateStatus('Failed to trigger: ' + error, 'error');
             }

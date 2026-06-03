@@ -70,13 +70,13 @@ async function connectWebSocket() {
     }
 
     const url = `ws://${host}:${port}`;
-    updateStatus(`Connecting to ${url}...`, 'info');
-    updateVersion(`Protocol: ${useLegacy ? 'OBS WebSocket 4.x' : 'OBS WebSocket 5.x'}`);
+    updateStatus(`Connecting to ${url}…`, 'info');
+    updateVersion(`Protocol: ${useLegacy ? 'OBS WebSocket 4.x (legacy)' : 'OBS WebSocket 5.x'}`);
 
     socket = new WebSocket(url);
 
     socket.onopen = async () => {
-        updateStatus('Connected. Authenticating...', 'info');
+        updateStatus('Connected. Authenticating…', 'info');
         try {
             const authInfo = await sendRequest('GetAuthRequired', {});
             const authRequired = useLegacy ? authInfo.authRequired === true : authInfo.authRequired;
@@ -89,7 +89,7 @@ async function connectWebSocket() {
                 const auth = await sha256Base64(secret + authInfo.challenge);
                 await sendRequest('Authenticate', { auth });
             }
-            updateStatus('Connected and authenticated', 'success');
+            updateStatus('✓ Connected and authenticated', 'success');
         } catch (error) {
             updateStatus('Authentication failed: ' + error, 'error');
         }
@@ -124,7 +124,7 @@ async function connectWebSocket() {
         }
     };
 
-    socket.onerror = (event) => updateStatus('WebSocket error', 'error');
+    socket.onerror = () => updateStatus('WebSocket error', 'error');
     socket.onclose = (event) => updateStatus(`Disconnected (${event.code})`, 'error');
 }
 
@@ -135,7 +135,7 @@ async function triggerHotkey(name) {
     }
     try {
         await sendRequest('TriggerHotkeyByName', { hotkeyName: name });
-        updateStatus(`Triggered ${name}`, 'success');
+        updateStatus(`✓ Triggered: ${name}`, 'success');
     } catch (error) {
         updateStatus('Trigger failed: ' + error, 'error');
     }

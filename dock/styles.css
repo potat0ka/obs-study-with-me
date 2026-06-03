@@ -1,7 +1,7 @@
 :root {
     color-scheme: dark;
     font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #101419;
+    background: #0e1014;
     color: #dee4ee;
 }
 
@@ -26,24 +26,24 @@ header {
 
 h1 {
     margin: 0;
-    font-size: 1.45rem;
+    font-size: 1.35rem;
 }
 
 .subtitle {
-    margin: 6px 0 0;
+    margin: 5px 0 0;
     color: #8a98b7;
-    font-size: 0.95rem;
+    font-size: 0.88rem;
 }
 
 .connection-panel {
     display: grid;
     gap: 10px;
-    margin-bottom: 16px;
+    margin-bottom: 18px;
 }
 
 .row {
     display: grid;
-    gap: 6px;
+    gap: 5px;
 }
 
 .row-inline {
@@ -52,78 +52,109 @@ h1 {
 }
 
 label {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: #9fb1d1;
 }
 
 input[type="text"], input[type="password"] {
     width: 100%;
     border: 1px solid #2d3d5a;
-    border-radius: 12px;
+    border-radius: 10px;
     background: #141d2f;
     color: #eef3ff;
-    padding: 10px 12px;
-    font-size: 0.95rem;
+    padding: 9px 12px;
+    font-size: 0.92rem;
+    outline: none;
+    transition: border-color 0.15s;
+}
+input[type="text"]:focus, input[type="password"]:focus {
+    border-color: #4b6ed2;
 }
 
 button {
-    border: none;
-    border-radius: 14px;
-    background: #3b5cb1;
-    color: white;
-    font-size: 0.96rem;
+    border: 1px solid #2d3d5a;
+    border-radius: 12px;
+    background: #1c2840;
+    color: #dee4ee;
+    font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
-    padding: 12px 14px;
-    transition: transform 0.16s ease, background-color 0.16s ease;
+    padding: 11px 12px;
+    transition: transform 0.14s ease, background-color 0.14s ease, border-color 0.14s ease;
 }
 
 button:hover {
     transform: translateY(-1px);
-    background: #4b6ed2;
+    background: #263456;
+    border-color: #4b6ed2;
 }
 
 button.primary {
     width: 100%;
-    margin-top: 6px;
+    margin-top: 4px;
+    background: #3b5cb1;
+    border-color: #3b5cb1;
+    color: white;
+    padding: 11px;
+}
+button.primary:hover { background: #4b6ed2; border-color: #4b6ed2; }
+
+/* Timer control buttons */
+.btn-start  { background: #1a3d26; border-color: #2e6b42; color: #86efac; }
+.btn-start:hover  { background: #205030; }
+.btn-pause  { background: #3d341a; border-color: #6b5a2e; color: #fde68a; }
+.btn-pause:hover  { background: #504020; }
+.btn-skip   { background: #1a2e3d; border-color: #2e4e6b; color: #93c5fd; }
+.btn-skip:hover   { background: #204050; }
+.btn-stop   { background: #3d1a1a; border-color: #6b2e2e; color: #fca5a5; }
+.btn-stop:hover   { background: #502020; }
+.btn-focus  { color: #bbf7d0; border-color: #4ade80; }
+.btn-focus:hover  { background: #1a3520; }
+.btn-short  { color: #fef08a; border-color: #facc15; }
+.btn-short:hover  { background: #35300a; }
+.btn-long   { color: #fca5a5; border-color: #f87171; }
+.btn-long:hover   { background: #3d1a1a; }
+.span2 { grid-column: span 2; }
+
+.controls { }
+
+.group-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #8a98b7;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 8px;
 }
 
 .button-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 9px;
+    margin-bottom: 14px;
+}
+
+.button-grid.cols3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .status {
     margin-top: 8px;
-    padding: 12px 14px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 10px 13px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
     background: rgba(255, 255, 255, 0.03);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     line-height: 1.4;
 }
 
-.status.info {
-    color: #9fb1d1;
-}
-
-.status.success {
-    color: #a4f0b0;
-    border-color: rgba(164, 240, 176, 0.25);
-}
-
-.status.error {
-    color: #ff95a5;
-    border-color: rgba(255, 149, 165, 0.25);
-}
-
-.status.version {
-    background: rgba(255, 255, 255, 0.04);
-}
+.status.info    { color: #9fb1d1; }
+.status.success { color: #86efac; border-color: rgba(134, 239, 172, 0.25); }
+.status.error   { color: #f87171; border-color: rgba(248, 113, 113, 0.25); }
+.status.version { background: rgba(255,255,255,0.03); font-size: 0.78rem; color: #6a7d9e; }
 
 @media (max-width: 460px) {
-    .button-grid {
-        grid-template-columns: 1fr;
-    }
+    .button-grid { grid-template-columns: 1fr; }
+    .button-grid.cols3 { grid-template-columns: 1fr; }
+    .span2 { grid-column: span 1; }
 }

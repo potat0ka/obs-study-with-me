@@ -9,8 +9,8 @@
 <body>
     <div class="dock-shell">
         <header>
-            <h1>Pomodoro Control</h1>
-            <p class="subtitle">OBS WebSocket control dock for the Pomodoro timer</p>
+            <h1>🍅 Pomodoro Control</h1>
+            <p class="subtitle">OBS WebSocket control dock — Study With Me</p>
         </header>
 
         <section class="connection-panel">
@@ -34,17 +34,23 @@
             <div id="version" class="status version">Protocol: unknown</div>
         </section>
 
-        <section class="button-grid">
-            <button onclick="triggerHotkey('pomo_start')">Start</button>
-            <button onclick="triggerHotkey('pomo_pause')">Pause</button>
-            <button onclick="triggerHotkey('pomo_resume')">Resume</button>
-            <button onclick="triggerHotkey('pomo_toggle')">Toggle</button>
-            <button onclick="triggerHotkey('pomo_skip')">Skip</button>
-            <button onclick="triggerHotkey('pomo_reset')">Reset</button>
-            <button onclick="triggerHotkey('pomo_stop')">Stop</button>
-            <button onclick="triggerHotkey('pomo_focus')">Focus</button>
-            <button onclick="triggerHotkey('pomo_short_break')">Short Break</button>
-            <button onclick="triggerHotkey('pomo_long_break')">Long Break</button>
+        <section class="controls">
+            <p class="group-label">▶ Timer Controls</p>
+            <div class="button-grid">
+                <button class="btn-start"  onclick="triggerHotkey('pomo_start')">▶ Start</button>
+                <button class="btn-pause"  onclick="triggerHotkey('pomo_pause')">⏸ Pause</button>
+                <button onclick="triggerHotkey('pomo_resume')">⏵ Resume</button>
+                <button onclick="triggerHotkey('pomo_toggle')">⇌ Toggle</button>
+                <button class="btn-skip"   onclick="triggerHotkey('pomo_skip')">⤼ Skip</button>
+                <button onclick="triggerHotkey('pomo_reset')">⟲ Reset</button>
+                <button class="btn-stop span2" onclick="triggerHotkey('pomo_stop')">⏹ Stop</button>
+            </div>
+            <p class="group-label">⚡ Jump To Mode</p>
+            <div class="button-grid cols3">
+                <button class="btn-focus"  onclick="triggerHotkey('pomo_focus')">🧠 Focus</button>
+                <button class="btn-short"  onclick="triggerHotkey('pomo_short_break')">☕ Short</button>
+                <button class="btn-long"   onclick="triggerHotkey('pomo_long_break')">🛌 Long</button>
+            </div>
         </section>
     </div>
 
