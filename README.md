@@ -3,6 +3,17 @@
 An advanced Pomodoro and "Study With Me" stream manager for OBS Studio, co-created with Agentic AI. 
 This Lua script completely automates your study streams so you can focus on working, not on clicking buttons in OBS.
 
+## 📦 Package Overview
+This repository is organized as a plugin-style distribtion package:
+- `lua/` — packaged OBS Lua script
+- `dock/` — browser dock UI for remote control
+- `docs/` — installation and quickstart guides
+- `install/` — installer helper notes
+- `release/` — packaging and release workflow
+- `assets/` — icons, screenshots, or resource assets
+
+For the fastest setup, see `docs/QUICKSTART.md`.
+
 ## ✨ Features
 
 - **🪄 1-Click Auto-Setup**: Automatically generates **THREE** scenes: "Study With Me - Focus", "Study With Me - Short Break", and "Study With Me - Long Break". It automatically adds and positions all necessary text and media sources in all of them. 

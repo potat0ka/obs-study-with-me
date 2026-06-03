@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBS Pomodoro Control Dock</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="dock-shell">
+        <header>
+            <h1>Pomodoro Control</h1>
+            <p class="subtitle">OBS WebSocket control dock for the Pomodoro timer</p>
+        </header>
+
+        <section class="connection-panel">
+            <div class="row">
+                <label for="host">Host</label>
+                <input id="host" type="text" value="127.0.0.1">
+            </div>
+            <div class="row">
+                <label for="port">Port</label>
+                <input id="port" type="text" value="4455">
+            </div>
+            <div class="row">
+                <label for="password">Password</label>
+                <input id="password" type="password" placeholder="Optional">
+            </div>
+            <div class="row row-inline">
+                <label><input id="legacy" type="checkbox"> Legacy OBS WebSocket 4.x</label>
+            </div>
+            <button id="connect" class="primary">Connect</button>
+            <div id="status" class="status info">Disconnected</div>
+            <div id="version" class="status version">Protocol: unknown</div>
+        </section>
+
+        <section class="button-grid">
+            <button onclick="triggerHotkey('pomo_start')">Start</button>
+            <button onclick="triggerHotkey('pomo_pause')">Pause</button>
+            <button onclick="triggerHotkey('pomo_resume')">Resume</button>
+            <button onclick="triggerHotkey('pomo_toggle')">Toggle</button>
+            <button onclick="triggerHotkey('pomo_skip')">Skip</button>
+            <button onclick="triggerHotkey('pomo_reset')">Reset</button>
+            <button onclick="triggerHotkey('pomo_stop')">Stop</button>
+            <button onclick="triggerHotkey('pomo_focus')">Focus</button>
+            <button onclick="triggerHotkey('pomo_short_break')">Short Break</button>
+            <button onclick="triggerHotkey('pomo_long_break')">Long Break</button>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

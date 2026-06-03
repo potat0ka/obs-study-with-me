@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomodoro Control Dock</title>
+    <style>
+        body { font-family: Arial, sans-serif; background:#1a1a1a; color:#eee; margin:0; padding:16px; }
+        h1 { font-size: 18px; margin-top:0; }
+        .section { margin-bottom: 18px; }
+        .field { margin-bottom:12px; }
+        .field label { display:block; font-size:12px; color:#aaa; margin-bottom:4px; }
+        .field input { width:100%; padding:8px; border-radius:6px; border:1px solid #333; background:#111; color:#eee; }
+        .buttons { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+        button { padding:12px 10px; border:none; border-radius:8px; background:#444; color:#eee; cursor:pointer; font-weight:600; }
+        button:hover { background:#555; }
+        button.connect { background:#1976d2; }
+        button.connect:hover { background:#1e88e5; }
+        .status { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #111; border:1px solid #333; min-height: 46px; }
+        .status.success { border-color: #2e7d32; }
+        .status.error { border-color: #c62828; }
+        .status.info { border-color: #1565c0; }
+    </style>
+</head>
+<body>
+    <h1>Pomodoro Control Dock</h1>
+    <div class="section">
+        <div class="field">
+            <label for="host">OBS WebSocket Host</label>
+            <input id="host" type="text" value="127.0.0.1">
+        </div>
+        <div class="field">
+            <label for="port">OBS WebSocket Port</label>
+            <input id="port" type="text" value="4455">
+        </div>
+        <div class="field">
+            <label for="password">OBS WebSocket Password</label>
+            <input id="password" type="password" placeholder="Leave empty if no password">
+        </div>
+        <div class="field">
+            <label><input id="legacy" type="checkbox"> Use legacy OBS WebSocket 4.x protocol (port 4444)</label>
+        </div>
+        <button class="connect" onclick="connectWebSocket()">Connect</button>
+    </div>
+
+    <div class="section buttons">
+        <button onclick="triggerHotkey('pomo_start')">Start</button>
+        <button onclick="triggerHotkey('pomo_pause')">Pause</button>
+        <button onclick="triggerHotkey('pomo_resume')">Resume</button>
+        <button onclick="triggerHotkey('pomo_toggle')">Toggle</button>
+        <button onclick="triggerHotkey('pomo_skip')">Skip</button>
+        <button onclick="triggerHotkey('pomo_reset')">Reset</button>
+        <button onclick="triggerHotkey('pomo_stop')">Stop</button>
+        <button onclick="triggerHotkey('pomo_focus')">Focus</button>
+        <button onclick="triggerHotkey('pomo_short_break')">Short Break</button>
+        <button onclick="triggerHotkey('pomo_long_break')">Long Break</button>
+    </div>
+
+    <div class="section status" id="statusBox">Disconnected</div>
+    <div class="section status info" id="versionBox">Protocol: unknown</div>
+
+    <script>
+        let socket = null;
+        let requestId = 1;
+        let useLegacy = false;
+        const pendingRequests = {};
+
+        function updateStatus(message, level = 'info') {
+            const box = document.getElementById('statusBox');
+            box.textContent = message;
+            box.className = 'section status ' + level;
+        }
+
+        function updateVersion(message) {
+            const box = document.getElementById('versionBox');
+            box.textContent = message;
+        }
+
+        function sendJSON(payload) {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                updateStatus('WebSocket is not open.', 'error');
+                return;
+            }
+            socket.send(JSON.stringify(payload));
+        }
+
+        function sendRequest(requestType, requestData = {}) {
+            const requestIdText = 'req_' + requestId++;
+            const payload = useLegacy
+                ? { 'request-type': requestType, 'message-id': requestIdText, ...requestData }
+                : { op: 6, d: { requestType, requestId: requestIdText, requestData } };
+            return new Promise((resolve, reject) => {
+                pendingRequests[requestIdText] = { resolve, reject };
+                sendJSON(payload);
+                setTimeout(() => {
+                    if (pendingRequests[requestIdText]) {
+                        reject('Request timed out: ' + requestType);
+                        delete pendingRequests[requestIdText];
+                    }
+                }, 8000);
+            });
+        }
+
+        async function sha256Base64(message) {
+            const data = new TextEncoder().encode(message);
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            const bytes = new Uint8Array(digest);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        async function connectWebSocket() {
+            const host = document.getElementById('host').value.trim();
+            const port = document.getElementById('port').value.trim();
+            const password = document.getElementById('password').value;
+            useLegacy = document.getElementById('legacy').checked;
+            if (!host || !port) {
+                updateStatus('Enter host and port first.', 'error');
+                return;
+            }
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+            const protocol = useLegacy ? 'ws' : 'ws';
+            const url = `${protocol}://${host}:${port}`;
+            updateStatus('Connecting to ' + url + (useLegacy ? ' (legacy)' : ''), 'info');
+            updateVersion('Protocol: ' + (useLegacy ? 'Legacy OBS WebSocket 4.x' : 'OBS WebSocket 5.x'));
+            socket = new WebSocket(url);
+            socket.onopen = async () => {
+                updateStatus('Connected. Checking auth...', 'info');
+                try {
+                    const authInfo = await sendRequest('GetAuthRequired', {});
+                    const authRequired = useLegacy ? authInfo.authRequired === true : authInfo.authRequired;
+                    if (authRequired) {
+                        if (!password) {
+                            updateStatus('Password required for OBS WebSocket.', 'error');
+                            return;
+                        }
+                        const secret = await sha256Base64(password + authInfo.salt);
+                        const auth = await sha256Base64(secret + authInfo.challenge);
+                        if (useLegacy) {
+                            await sendRequest('Authenticate', { auth });
+                        } else {
+                            await sendRequest('Authenticate', { auth });
+                        }
+                    }
+                    updateStatus('Authenticated and ready.', 'success');
+                } catch (error) {
+                    updateStatus('Auth failed: ' + error, 'error');
+                }
+            };
+            socket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                if (!useLegacy && message.op === 7 && message.d && message.d.requestId) {
+                    const pending = pendingRequests[message.d.requestId];
+                    if (pending) {
+                        delete pendingRequests[message.d.requestId];
+                        if (message.d.status && message.d.status.code === 0) {
+                            pending.resolve(message.d.responseData || {});
+                        } else {
+                            pending.reject(message.d.error || 'Unknown error');
+                        }
+                    }
+                }
+                if (useLegacy && message['message-id']) {
+                    const pending = pendingRequests[message['message-id']];
+                    if (pending) {
+                        delete pendingRequests[message['message-id']];
+                        if (message.status === 'ok') {
+                            pending.resolve(message);
+                        } else {
+                            pending.reject(message.error || 'Unknown error');
+                        }
+                    }
+                }
+            };
+            socket.onerror = (event) => {
+                updateStatus('WebSocket error: ' + (event.message || 'unknown'), 'error');
+            };
+            socket.onclose = (event) => {
+                updateStatus('Disconnected (' + event.code + '): ' + (event.reason || 'No reason'), 'error');
+            };
+        }
+
+        async function triggerHotkey(name) {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                updateStatus('Not connected to OBS WebSocket.', 'error');
+                return;
+            }
+            try {
+                await sendRequest('TriggerHotkeyByName', { hotkeyName: name });
+                updateStatus('Triggered ' + name, 'success');
+            } catch (error) {
+                updateStatus('Failed to trigger: ' + error, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
